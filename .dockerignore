@@ -1,1 +1,40 @@
+# Fly.io config
 fly.toml
+
+# Git
+.git
+.gitignore
+
+# Node modules (will be installed during build)
+node_modules
+
+# Build output (will be created during build)
+dist
+
+# Documentation
+*.md
+LICENSE
+
+# Environment files
+.env
+.env.*
+!.env.example
+
+# IDE
+.vscode
+.idea
+*.swp
+*.swo
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Jupyter notebooks
+*.ipynb
+
+# Test files
+*.test.js
+*.spec.js
+__tests__
+coverage
