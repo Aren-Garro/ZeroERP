@@ -8,8 +8,9 @@ dotenv.config();
 const app = express();
 const PORT = process.env.PORT || 3001;
 
-// Initialize Stripe with secret key
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
+// Initialize Stripe with secret key (supports STRIPE_SECRET_KEY or STRIPE_API)
+const stripeKey = process.env.STRIPE_SECRET_KEY || process.env.STRIPE_API;
+const stripe = new Stripe(stripeKey);
 
 // Middleware
 app.use(cors({
@@ -66,7 +67,7 @@ app.use(express.json());
 
 // Health check
 app.get('/api/health', (req, res) => {
-  res.json({ status: 'ok', stripe: !!process.env.STRIPE_SECRET_KEY });
+  res.json({ status: 'ok', stripe: !!stripeKey });
 });
 
 // Create a customer
@@ -357,7 +358,9 @@ app.post('/api/billing-portal', async (req, res) => {
 
 app.listen(PORT, () => {
   console.log(`ZeroERP Billing API running on port ${PORT}`);
-  if (!process.env.STRIPE_SECRET_KEY) {
-    console.warn('Warning: STRIPE_SECRET_KEY is not set. Stripe operations will fail.');
+  if (!stripeKey) {
+    console.warn('Warning: No Stripe API key found (STRIPE_SECRET_KEY or STRIPE_API). Stripe operations will fail.');
+  } else {
+    console.log('Stripe API key configured successfully');
   }
 });
