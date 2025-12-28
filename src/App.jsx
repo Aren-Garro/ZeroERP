@@ -1,7 +1,7 @@
 import { toast } from 'sonner';
 import { Sidebar, Header, MobileMenu } from './components/layout';
-import { Dashboard, Inventory, Orders, Purchasing, Placeholder } from './pages';
-import { useNavigation, useInventory, useOrders, usePurchaseOrders } from './hooks';
+import { Dashboard, Inventory, Orders, Purchasing, Billing, Placeholder } from './pages';
+import { useNavigation, useInventory, useOrders, usePurchaseOrders, useBilling } from './hooks';
 import { exportInventoryToCSV, exportOrdersToCSV, exportPurchaseOrdersToCSV } from './utils';
 import { Toast } from './components/ui';
 
@@ -50,6 +50,26 @@ function App() {
     purchaseOrders,
     receivePO
   } = usePurchaseOrders();
+
+  // Billing state
+  const {
+    customerId,
+    subscriptions,
+    invoices,
+    paymentMethods,
+    loading: billingLoading,
+    error: billingError,
+    checkApiHealth,
+    createCustomer,
+    fetchSubscriptions,
+    cancelSubscription,
+    resumeSubscription,
+    fetchInvoices,
+    fetchPaymentMethods,
+    deletePaymentMethod,
+    createPaymentIntent,
+    openBillingPortal,
+  } = useBilling();
 
   // Handle inventory export
   const handleInventoryExport = () => {
@@ -148,6 +168,28 @@ function App() {
             purchaseOrders={purchaseOrders}
             onReceivePO={handleReceivePO}
             onExport={handlePurchaseOrdersExport}
+          />
+        );
+
+      case 'billing':
+        return (
+          <Billing
+            customerId={customerId}
+            subscriptions={subscriptions}
+            invoices={invoices}
+            paymentMethods={paymentMethods}
+            loading={billingLoading}
+            error={billingError}
+            onCreateCustomer={createCustomer}
+            onFetchSubscriptions={fetchSubscriptions}
+            onCancelSubscription={cancelSubscription}
+            onResumeSubscription={resumeSubscription}
+            onFetchInvoices={fetchInvoices}
+            onFetchPaymentMethods={fetchPaymentMethods}
+            onDeletePaymentMethod={deletePaymentMethod}
+            onCreatePaymentIntent={createPaymentIntent}
+            onOpenBillingPortal={openBillingPortal}
+            onCheckApiHealth={checkApiHealth}
           />
         );
 

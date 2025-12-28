@@ -59,6 +59,22 @@ export const useOrders = () => {
     [orders]
   );
 
+  // Payment-related derived state
+  const unpaidOrders = useMemo(() =>
+    orders.filter(o => o.paymentStatus === 'pending' || o.paymentStatus === 'failed'),
+    [orders]
+  );
+
+  const paidOrders = useMemo(() =>
+    orders.filter(o => o.paymentStatus === 'paid'),
+    [orders]
+  );
+
+  const paidRevenue = useMemo(() =>
+    paidOrders.reduce((acc, order) => acc + order.total, 0),
+    [paidOrders]
+  );
+
   // Actions
   const fulfillOrder = (orderId) => {
     setOrders(prev => prev.map(o =>
@@ -79,6 +95,29 @@ export const useOrders = () => {
     return orderData;
   };
 
+  // Payment actions
+  const updatePaymentStatus = (orderId, paymentStatus, paymentDetails = {}) => {
+    setOrders(prev => prev.map(o =>
+      o.id === orderId
+        ? {
+            ...o,
+            paymentStatus,
+            paymentMethod: paymentDetails.paymentMethod || o.paymentMethod,
+            paymentIntentId: paymentDetails.paymentIntentId || o.paymentIntentId,
+          }
+        : o
+    ));
+    return orderId;
+  };
+
+  const markOrderPaid = (orderId, paymentIntentId, paymentMethod = 'card') => {
+    return updatePaymentStatus(orderId, 'paid', { paymentIntentId, paymentMethod });
+  };
+
+  const markPaymentFailed = (orderId) => {
+    return updatePaymentStatus(orderId, 'failed');
+  };
+
   return {
     // State
     orders,
@@ -89,10 +128,16 @@ export const useOrders = () => {
     shippedOrders,
     deliveredOrders,
     totalRevenue,
+    unpaidOrders,
+    paidOrders,
+    paidRevenue,
 
     // Actions
     fulfillOrder,
     markDelivered,
     addOrder,
+    updatePaymentStatus,
+    markOrderPaid,
+    markPaymentFailed,
   };
 };
