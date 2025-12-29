@@ -1,7 +1,8 @@
 import { toast } from 'sonner';
+import { Loader2 } from 'lucide-react';
 import { Sidebar, Header, MobileMenu } from './components/layout';
-import { Dashboard, Inventory, Orders, Purchasing, Billing, Integrations, Developers, Placeholder } from './pages';
-import { useNavigation, useInventory, useOrders, usePurchaseOrders, useBilling } from './hooks';
+import { Dashboard, Inventory, Orders, Purchasing, Billing, Integrations, Developers, Placeholder, Login } from './pages';
+import { useNavigation, useInventory, useOrders, usePurchaseOrders, useBilling, useAuth } from './hooks';
 import { exportInventoryToCSV, exportOrdersToCSV, exportPurchaseOrdersToCSV } from './utils';
 import { Toast } from './components/ui';
 import { SmartReplenishment } from './components/dashboard';
@@ -11,6 +12,9 @@ import { SmartReplenishment } from './components/dashboard';
  * Orchestrates all pages and manages global state
  */
 function App() {
+  // Authentication state
+  const { isAuthenticated, isLoading: authLoading } = useAuth();
+
   // Navigation state
   const {
     activeTab,
@@ -248,6 +252,29 @@ function App() {
     }
   };
 
+  // Show loading state while checking authentication
+  if (authLoading) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-indigo-50 via-white to-slate-50 flex items-center justify-center">
+        <div className="text-center">
+          <Loader2 className="w-8 h-8 animate-spin text-indigo-600 mx-auto mb-4" />
+          <p className="text-slate-600">Loading...</p>
+        </div>
+      </div>
+    );
+  }
+
+  // Show login page when not authenticated
+  if (!isAuthenticated) {
+    return (
+      <>
+        <Toast />
+        <Login />
+      </>
+    );
+  }
+
+  // Show main application when authenticated
   return (
     <>
       <Toast />
