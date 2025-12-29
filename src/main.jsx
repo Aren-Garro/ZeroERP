@@ -2,6 +2,7 @@ import React from 'react';
 import ReactDOM from 'react-dom/client';
 import * as Sentry from "@sentry/browser";
 import App from './App';
+import Auth0Provider from './auth/Auth0Provider';
 import ErrorBoundary from './components/ErrorBoundary';
 import './styles/index.css';
 
@@ -15,7 +16,9 @@ Sentry.init({
 ReactDOM.createRoot(document.getElementById('root')).render(
   <React.StrictMode>
     <ErrorBoundary>
-      <App />
+      <Auth0Provider>
+        <App />
+      </Auth0Provider>
     </ErrorBoundary>
   </React.StrictMode>
 );
