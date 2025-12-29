@@ -1,0 +1,39 @@
+plugins {
+    id 'java'
+    id 'war'
+    id 'org.gretty' version '3.0.6'
+}
+
+group = 'com.auth0.example'
+version = '1.0-SNAPSHOT'
+
+repositories {
+    mavenCentral()
+}
+
+dependencies {
+    // Auth0 dependencies
+    implementation 'com.auth0:mvc-auth-commons:1.+'
+    implementation 'com.auth0:jwks-rsa:0.22.1'
+
+    // Servlet API
+    compileOnly 'javax.servlet:javax.servlet-api:3.1.0'
+
+    // JSP support
+    implementation 'javax.servlet:jstl:1.2'
+
+    // Logging
+    implementation 'org.slf4j:slf4j-api:1.7.36'
+    implementation 'ch.qos.logback:logback-classic:1.2.11'
+}
+
+java {
+    sourceCompatibility = JavaVersion.VERSION_11
+    targetCompatibility = JavaVersion.VERSION_11
+}
+
+gretty {
+    servletContainer = 'jetty9.4'
+    contextPath = '/'
+    httpPort = 3000
+}
