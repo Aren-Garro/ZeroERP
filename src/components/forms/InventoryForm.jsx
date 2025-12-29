@@ -1,9 +1,11 @@
 import { useState } from 'react';
+import { Trash2, Plus } from 'lucide-react';
 import InputField from './InputField';
 import { validateInventoryForm } from '../../utils';
 
 /**
  * InventoryForm component - Form for adding/editing inventory items
+ * Includes custom metadata support for power users
  */
 const InventoryForm = ({ initialData = {}, onSubmit, onCancel }) => {
   const [formData, setFormData] = useState({
@@ -16,6 +18,11 @@ const InventoryForm = ({ initialData = {}, onSubmit, onCancel }) => {
     price: initialData.price || 0,
     vendor: initialData.vendor || ''
   });
+
+  // Custom metadata state - allows arbitrary key-value pairs
+  const [metadata, setMetadata] = useState(
+    initialData.metadata || []
+  );
 
   const [errors, setErrors] = useState({});
   const [touched, setTouched] = useState({});
@@ -48,6 +55,21 @@ const InventoryForm = ({ initialData = {}, onSubmit, onCancel }) => {
     }
   };
 
+  // Metadata handlers
+  const addMetadataField = () => {
+    setMetadata([...metadata, { key: '', value: '' }]);
+  };
+
+  const updateMetadataField = (index, field, value) => {
+    const newMetadata = [...metadata];
+    newMetadata[index][field] = value;
+    setMetadata(newMetadata);
+  };
+
+  const removeMetadataField = (index) => {
+    setMetadata(metadata.filter((_, i) => i !== index));
+  };
+
   const handleSubmit = (e) => {
     e.preventDefault();
 
@@ -69,7 +91,9 @@ const InventoryForm = ({ initialData = {}, onSubmit, onCancel }) => {
       return;
     }
 
-    onSubmit(formData);
+    // Filter out empty metadata entries and include in submission
+    const validMetadata = metadata.filter(m => m.key.trim() !== '');
+    onSubmit({ ...formData, metadata: validMetadata });
   };
 
   return (
@@ -161,6 +185,58 @@ const InventoryForm = ({ initialData = {}, onSubmit, onCancel }) => {
             error={touched.safetyStock && errors.safetyStock}
           />
         </div>
+      </div>
+
+      {/* Custom Metadata Section */}
+      <div className="p-4 bg-indigo-50/50 rounded-lg border border-indigo-100 space-y-3">
+        <div className="flex justify-between items-center">
+          <div>
+            <h4 className="text-sm font-bold text-slate-700">Custom Fields (Metadata)</h4>
+            <p className="text-xs text-slate-500 mt-0.5">Add custom attributes like Bin Location, Color, Expiry Date, etc.</p>
+          </div>
+          <button
+            type="button"
+            onClick={addMetadataField}
+            className="flex items-center gap-1 text-xs text-indigo-600 hover:text-indigo-800 font-medium px-2 py-1 rounded hover:bg-indigo-100 transition-colors"
+          >
+            <Plus className="w-3.5 h-3.5" /> Add Field
+          </button>
+        </div>
+
+        {metadata.length > 0 ? (
+          <div className="space-y-2">
+            {metadata.map((field, index) => (
+              <div key={index} className="flex gap-2 items-center">
+                <input
+                  type="text"
+                  placeholder="Key (e.g. Color)"
+                  className="flex-1 px-3 py-2 text-xs border border-slate-200 rounded-md bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
+                  value={field.key}
+                  onChange={(e) => updateMetadataField(index, 'key', e.target.value)}
+                />
+                <input
+                  type="text"
+                  placeholder="Value (e.g. Red)"
+                  className="flex-1 px-3 py-2 text-xs border border-slate-200 rounded-md bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
+                  value={field.value}
+                  onChange={(e) => updateMetadataField(index, 'value', e.target.value)}
+                />
+                <button
+                  type="button"
+                  onClick={() => removeMetadataField(index)}
+                  className="p-1.5 text-slate-400 hover:text-red-500 transition-colors"
+                  title="Remove field"
+                >
+                  <Trash2 className="w-4 h-4" />
+                </button>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <p className="text-xs text-slate-400 italic text-center py-3">
+            No custom fields added. Click "Add Field" to create one.
+          </p>
+        )}
       </div>
 
       {Object.keys(errors).length > 0 && touched.name && (

@@ -33,6 +33,106 @@ const logger = {
   }
 };
 
+// ============================================================================
+// Webhook System - Event-Driven Architecture
+// ============================================================================
+
+/**
+ * In-memory webhook registry (in production, this would be stored in a database)
+ * Webhooks allow external systems to receive real-time notifications
+ */
+const webhookRegistry = [
+  // Example webhooks - in production these would be user-configured
+  // { id: 1, url: 'https://hooks.zapier.com/...', events: ['order.created'], secret: 'whsec_...' }
+];
+
+/**
+ * Available webhook events that can be subscribed to
+ */
+const WEBHOOK_EVENTS = {
+  'order.created': 'Fired when a new order is placed',
+  'order.shipped': 'Fired when an order is marked as shipped',
+  'order.cancelled': 'Fired when an order is cancelled',
+  'inventory.low': 'Fired when stock drops below safety level',
+  'inventory.updated': 'Fired when stock levels change',
+  'po.created': 'Fired when a purchase order is created',
+  'po.received': 'Fired when a purchase order is received',
+};
+
+/**
+ * Generate HMAC signature for webhook payload
+ * Allows receivers to verify the webhook came from ZeroERP
+ */
+const generateWebhookSignature = (payload, secret) => {
+  return crypto
+    .createHmac('sha256', secret)
+    .update(JSON.stringify(payload))
+    .digest('hex');
+};
+
+/**
+ * Fire webhooks for a specific event
+ * Uses fire-and-forget pattern to avoid blocking the main request
+ */
+const triggerWebhooks = async (event, data) => {
+  const subscribers = webhookRegistry.filter(w => w.events.includes(event));
+
+  if (subscribers.length === 0) {
+    logger.debug(`No webhook subscribers for event: ${event}`);
+    return;
+  }
+
+  const payload = {
+    event,
+    timestamp: new Date().toISOString(),
+    data
+  };
+
+  subscribers.forEach(subscriber => {
+    logger.info(`Firing webhook ${event} to ${subscriber.url}`);
+
+    const headers = {
+      'Content-Type': 'application/json',
+      'X-ZeroERP-Event': event,
+      'X-ZeroERP-Timestamp': payload.timestamp,
+    };
+
+    // Add signature if secret is configured
+    if (subscriber.secret) {
+      headers['X-ZeroERP-Signature'] = generateWebhookSignature(payload, subscriber.secret);
+    }
+
+    // Fire and forget - don't await to avoid blocking the response
+    fetch(subscriber.url, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify(payload)
+    })
+      .then(res => {
+        if (!res.ok) {
+          logger.warn(`Webhook delivery failed to ${subscriber.url}: ${res.status}`);
+        } else {
+          logger.debug(`Webhook delivered successfully to ${subscriber.url}`);
+        }
+      })
+      .catch(err => {
+        logger.error(`Webhook delivery error to ${subscriber.url}: ${err.message}`);
+      });
+  });
+};
+
+/**
+ * Helper to emit events from anywhere in the application
+ * This makes the system truly event-driven
+ */
+const emitEvent = (event, data) => {
+  if (!WEBHOOK_EVENTS[event]) {
+    logger.warn(`Unknown event type: ${event}`);
+    return;
+  }
+  triggerWebhooks(event, data);
+};
+
 /**
  * Validate required environment variables at startup
  */
@@ -475,6 +575,235 @@ app.post('/api/billing-portal', async (req, res) => {
     logger.error('Error creating billing portal session:', error.message);
     res.status(500).json({ error: error.message });
   }
+});
+
+// ============================================================================
+// Webhook Management API
+// ============================================================================
+
+// List available webhook events
+app.get('/api/webhooks/events', authenticateApiKey, (req, res) => {
+  res.json({
+    events: Object.entries(WEBHOOK_EVENTS).map(([id, description]) => ({
+      id,
+      description
+    }))
+  });
+});
+
+// List registered webhooks
+app.get('/api/webhooks', authenticateApiKey, (req, res) => {
+  res.json({
+    webhooks: webhookRegistry.map(w => ({
+      id: w.id,
+      url: w.url,
+      events: w.events,
+      createdAt: w.createdAt
+    }))
+  });
+});
+
+// Register a new webhook endpoint
+app.post('/api/webhooks', authenticateApiKey, (req, res) => {
+  const { url, events, secret } = req.body;
+
+  if (!url || !events || !Array.isArray(events)) {
+    return res.status(400).json({ error: 'url and events array are required' });
+  }
+
+  // Validate events
+  const invalidEvents = events.filter(e => !WEBHOOK_EVENTS[e]);
+  if (invalidEvents.length > 0) {
+    return res.status(400).json({
+      error: `Invalid events: ${invalidEvents.join(', ')}`,
+      validEvents: Object.keys(WEBHOOK_EVENTS)
+    });
+  }
+
+  const webhook = {
+    id: crypto.randomUUID(),
+    url,
+    events,
+    secret: secret || crypto.randomBytes(32).toString('hex'),
+    createdAt: new Date().toISOString()
+  };
+
+  webhookRegistry.push(webhook);
+
+  logger.info(`Webhook registered: ${webhook.id} -> ${url}`);
+
+  res.status(201).json({
+    id: webhook.id,
+    url: webhook.url,
+    events: webhook.events,
+    secret: webhook.secret,
+    createdAt: webhook.createdAt,
+    message: 'Webhook registered successfully. Save the secret for signature verification.'
+  });
+});
+
+// Delete a webhook endpoint
+app.delete('/api/webhooks/:webhookId', authenticateApiKey, (req, res) => {
+  const { webhookId } = req.params;
+  const index = webhookRegistry.findIndex(w => w.id === webhookId);
+
+  if (index === -1) {
+    return res.status(404).json({ error: 'Webhook not found' });
+  }
+
+  webhookRegistry.splice(index, 1);
+  logger.info(`Webhook deleted: ${webhookId}`);
+
+  res.json({ success: true, message: 'Webhook deleted' });
+});
+
+// Test a webhook endpoint
+app.post('/api/webhooks/:webhookId/test', authenticateApiKey, async (req, res) => {
+  const { webhookId } = req.params;
+  const webhook = webhookRegistry.find(w => w.id === webhookId);
+
+  if (!webhook) {
+    return res.status(404).json({ error: 'Webhook not found' });
+  }
+
+  const testPayload = {
+    event: 'test',
+    timestamp: new Date().toISOString(),
+    data: { message: 'This is a test webhook from ZeroERP' }
+  };
+
+  try {
+    const headers = {
+      'Content-Type': 'application/json',
+      'X-ZeroERP-Event': 'test',
+      'X-ZeroERP-Timestamp': testPayload.timestamp,
+    };
+
+    if (webhook.secret) {
+      headers['X-ZeroERP-Signature'] = generateWebhookSignature(testPayload, webhook.secret);
+    }
+
+    const response = await fetch(webhook.url, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify(testPayload)
+    });
+
+    res.json({
+      success: response.ok,
+      statusCode: response.status,
+      message: response.ok ? 'Test webhook delivered successfully' : 'Webhook delivery failed'
+    });
+  } catch (error) {
+    res.json({
+      success: false,
+      error: error.message,
+      message: 'Failed to deliver test webhook'
+    });
+  }
+});
+
+// ============================================================================
+// Orders API (with webhook events)
+// ============================================================================
+
+// In-memory orders store (in production, use a database)
+const ordersStore = [];
+
+// Create a new order
+app.post('/api/orders', authenticateApiKey, (req, res) => {
+  const { customerId, items, shippingAddress, metadata } = req.body;
+
+  const order = {
+    id: `ord_${crypto.randomUUID().substring(0, 8)}`,
+    customerId,
+    items: items || [],
+    shippingAddress,
+    metadata,
+    status: 'pending',
+    total: items?.reduce((sum, item) => sum + (item.price * item.quantity), 0) || 0,
+    createdAt: new Date().toISOString()
+  };
+
+  ordersStore.push(order);
+
+  // TRIGGER THE ORDER.CREATED EVENT
+  emitEvent('order.created', order);
+
+  logger.info(`Order created: ${order.id}`);
+  res.status(201).json(order);
+});
+
+// List orders
+app.get('/api/orders', authenticateApiKey, (req, res) => {
+  res.json({ orders: ordersStore });
+});
+
+// Get order by ID
+app.get('/api/orders/:orderId', authenticateApiKey, (req, res) => {
+  const order = ordersStore.find(o => o.id === req.params.orderId);
+  if (!order) {
+    return res.status(404).json({ error: 'Order not found' });
+  }
+  res.json(order);
+});
+
+// Update order status (ship, cancel, etc.)
+app.patch('/api/orders/:orderId', authenticateApiKey, (req, res) => {
+  const { status } = req.body;
+  const order = ordersStore.find(o => o.id === req.params.orderId);
+
+  if (!order) {
+    return res.status(404).json({ error: 'Order not found' });
+  }
+
+  const previousStatus = order.status;
+  order.status = status;
+  order.updatedAt = new Date().toISOString();
+
+  // Emit appropriate event based on status change
+  if (status === 'shipped' && previousStatus !== 'shipped') {
+    emitEvent('order.shipped', order);
+  } else if (status === 'cancelled' && previousStatus !== 'cancelled') {
+    emitEvent('order.cancelled', order);
+  }
+
+  logger.info(`Order ${order.id} status changed: ${previousStatus} -> ${status}`);
+  res.json(order);
+});
+
+// ============================================================================
+// Inventory API (with webhook events)
+// ============================================================================
+
+// Update inventory with low stock event
+app.post('/api/inventory/check-levels', authenticateApiKey, (req, res) => {
+  const { items } = req.body;
+
+  if (!items || !Array.isArray(items)) {
+    return res.status(400).json({ error: 'items array is required' });
+  }
+
+  const lowStockItems = items.filter(item =>
+    item.currentStock <= item.safetyStock
+  );
+
+  // Emit low stock events for each item
+  lowStockItems.forEach(item => {
+    emitEvent('inventory.low', {
+      sku: item.sku,
+      name: item.name,
+      currentStock: item.currentStock,
+      safetyStock: item.safetyStock,
+      deficit: item.safetyStock - item.currentStock
+    });
+  });
+
+  res.json({
+    checked: items.length,
+    lowStockCount: lowStockItems.length,
+    lowStockItems
+  });
 });
 
 // Serve static files from the dist directory (production build)

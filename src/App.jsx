@@ -1,6 +1,6 @@
 import { toast } from 'sonner';
 import { Sidebar, Header, MobileMenu } from './components/layout';
-import { Dashboard, Inventory, Orders, Purchasing, Billing, Integrations, Placeholder } from './pages';
+import { Dashboard, Inventory, Orders, Purchasing, Billing, Integrations, Developers, Placeholder } from './pages';
 import { useNavigation, useInventory, useOrders, usePurchaseOrders, useBilling } from './hooks';
 import { exportInventoryToCSV, exportOrdersToCSV, exportPurchaseOrdersToCSV } from './utils';
 import { Toast } from './components/ui';
@@ -233,6 +233,9 @@ function App() {
 
       case 'integrations':
         return <Integrations />;
+
+      case 'developers':
+        return <Developers />;
 
       case 'reports':
         return <Placeholder title="Reports" />;

@@ -9,6 +9,7 @@ import {
   BarChart3,
   Settings,
   Plug,
+  Code,
   Plus,
   FileText
 } from 'lucide-react';
@@ -20,6 +21,7 @@ const COMMANDS = [
   { id: 'purchasing', label: 'Go to Purchasing', icon: Truck, type: 'navigation', target: 'purchasing' },
   { id: 'billing', label: 'Go to Billing', icon: CreditCard, type: 'navigation', target: 'billing' },
   { id: 'integrations', label: 'Go to Integrations', icon: Plug, type: 'navigation', target: 'integrations' },
+  { id: 'developers', label: 'Go to Developers', icon: Code, type: 'navigation', target: 'developers' },
   { id: 'reports', label: 'Go to Reports', icon: BarChart3, type: 'navigation', target: 'reports' },
   { id: 'settings', label: 'Go to Settings', icon: Settings, type: 'navigation', target: 'settings' },
   { id: 'new-item', label: 'Add Inventory Item', icon: Plus, type: 'action', action: 'addInventory' },
