@@ -5,6 +5,14 @@ import dotenv from 'dotenv';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import crypto from 'crypto';
+import { createServer } from 'http';
+
+// External integrations
+import { getRedisClient, redisHealthCheck, cache, closeRedisConnection } from './services/redis.js';
+import { initWebSocket, events as wsEvents, healthCheck as wsHealthCheck, closeWebSocket } from './services/websocket.js';
+import { initSentry, sentryErrorHandler, captureException, healthCheck as sentryHealthCheck, flush as sentryFlush } from './services/sentry.js';
+import { getInngestMiddleware, events as inngestEvents, healthCheck as inngestHealthCheck } from './services/inngest.js';
+import { initPostHog, events as posthogEvents, trackingMiddleware, healthCheck as posthogHealthCheck, shutdown as posthogShutdown } from './services/posthog.js';
 
 dotenv.config();
 
@@ -124,13 +132,39 @@ const triggerWebhooks = async (event, data) => {
 /**
  * Helper to emit events from anywhere in the application
  * This makes the system truly event-driven
+ * Now broadcasts to: HTTP webhooks, WebSocket, and Inngest
  */
 const emitEvent = (event, data) => {
   if (!WEBHOOK_EVENTS[event]) {
     logger.warn(`Unknown event type: ${event}`);
     return;
   }
+
+  // Trigger HTTP webhooks
   triggerWebhooks(event, data);
+
+  // Broadcast via WebSocket for real-time UI updates
+  try {
+    wsEvents[toCamelCase(event)]?.(data);
+  } catch (err) {
+    logger.debug(`WebSocket broadcast skipped for ${event}`);
+  }
+
+  // Send to Inngest for background processing
+  try {
+    const inngestEventName = event.replace('.', '/'); // order.created -> order/created
+    inngestEvents[toCamelCase(event)]?.(data);
+  } catch (err) {
+    logger.debug(`Inngest event skipped for ${event}`);
+  }
+};
+
+/**
+ * Convert event name to camelCase for function lookup
+ * e.g., 'order.created' -> 'orderCreated'
+ */
+const toCamelCase = (eventName) => {
+  return eventName.replace(/[.-](\w)/g, (_, c) => c.toUpperCase());
 };
 
 /**
@@ -173,8 +207,27 @@ const { stripeKey } = validateEnv();
 const app = express();
 const PORT = process.env.PORT || 3001;
 
+// Create HTTP server for WebSocket support
+const server = createServer(app);
+
 // Initialize Stripe with secret key
 const stripe = stripeKey ? new Stripe(stripeKey) : null;
+
+// ============================================================================
+// Initialize External Integrations
+// ============================================================================
+
+// Initialize Sentry (must be early for proper error capturing)
+initSentry(app);
+
+// Initialize Redis connection
+const redis = getRedisClient();
+
+// Initialize WebSocket server
+initWebSocket(server);
+
+// Initialize PostHog analytics
+initPostHog();
 
 /**
  * API Key authentication middleware
@@ -276,9 +329,29 @@ app.post('/api/webhooks/stripe', express.raw({ type: 'application/json' }), asyn
 // JSON body parser for other routes
 app.use(express.json());
 
-// Health check - no auth required
-app.get('/api/health', (req, res) => {
-  res.json({ status: 'ok', stripe: !!stripe, environment: NODE_ENV });
+// PostHog analytics tracking middleware
+app.use(trackingMiddleware);
+
+// Inngest background jobs endpoint
+app.use('/api/inngest', getInngestMiddleware());
+
+// Health check - no auth required (enhanced with all services)
+app.get('/api/health', async (req, res) => {
+  const redisStatus = await redisHealthCheck();
+
+  res.json({
+    status: 'ok',
+    environment: NODE_ENV,
+    services: {
+      stripe: !!stripe,
+      redis: redisStatus,
+      websocket: wsHealthCheck(),
+      sentry: sentryHealthCheck(),
+      inngest: inngestHealthCheck(),
+      posthog: posthogHealthCheck(),
+    },
+    timestamp: new Date().toISOString(),
+  });
 });
 
 // Apply authentication to all API routes (except health and webhooks)
@@ -810,6 +883,9 @@ app.post('/api/inventory/check-levels', authenticateApiKey, (req, res) => {
 const distPath = path.join(__dirname, '..', 'dist');
 app.use(express.static(distPath));
 
+// Sentry error handler (must be before other error handlers)
+app.use(sentryErrorHandler());
+
 // SPA fallback - serve index.html for all non-API routes
 app.get('*', (req, res) => {
   // Don't serve index.html for API routes
@@ -819,12 +895,27 @@ app.get('*', (req, res) => {
   res.sendFile(path.join(distPath, 'index.html'));
 });
 
-app.listen(PORT, () => {
+// Start server with WebSocket support
+server.listen(PORT, () => {
   logger.info(`ZeroERP server running on port ${PORT}`);
   logger.info(`Environment: ${NODE_ENV}`);
+  logger.info(`WebSocket available at ws://localhost:${PORT}/ws`);
   logger.debug(`Serving static files from: ${distPath}`);
+
   if (stripe) {
     logger.info('Stripe API configured successfully');
+  }
+  if (redis) {
+    logger.info('Redis connection initialized');
+  }
+  if (process.env.SENTRY_DSN) {
+    logger.info('Sentry error tracking enabled');
+  }
+  if (process.env.POSTHOG_API_KEY) {
+    logger.info('PostHog analytics enabled');
+  }
+  if (process.env.INNGEST_EVENT_KEY) {
+    logger.info('Inngest background jobs enabled');
   }
   if (process.env.API_KEY) {
     logger.info('API key authentication enabled');
@@ -832,3 +923,35 @@ app.listen(PORT, () => {
     logger.warn('API key authentication disabled (set API_KEY env var to enable)');
   }
 });
+
+// ============================================================================
+// Graceful Shutdown
+// ============================================================================
+
+const gracefulShutdown = async (signal) => {
+  logger.info(`${signal} received. Starting graceful shutdown...`);
+
+  // Close HTTP server (stop accepting new connections)
+  server.close(() => {
+    logger.info('HTTP server closed');
+  });
+
+  // Close all integrations
+  try {
+    await Promise.all([
+      closeWebSocket(),
+      closeRedisConnection(),
+      posthogShutdown(),
+      sentryFlush(2000),
+    ]);
+    logger.info('All connections closed gracefully');
+  } catch (error) {
+    logger.error('Error during shutdown:', error.message);
+    captureException(error);
+  }
+
+  process.exit(0);
+};
+
+process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
+process.on('SIGINT', () => gracefulShutdown('SIGINT'));

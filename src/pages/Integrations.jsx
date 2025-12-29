@@ -4,6 +4,53 @@ import { Card } from '../components/ui';
 import { toast } from 'sonner';
 
 const INTEGRATIONS = [
+  // Infrastructure & Developer Tools
+  {
+    id: 'redis',
+    name: 'Fly Redis',
+    emoji: '🔴',
+    status: 'connected',
+    description: 'In-memory caching & session storage',
+    lastSync: 'Active',
+    category: 'Infrastructure'
+  },
+  {
+    id: 'websocket',
+    name: 'WebSocket',
+    emoji: '🔌',
+    status: 'connected',
+    description: 'Real-time bidirectional communication',
+    lastSync: 'Active',
+    category: 'Infrastructure'
+  },
+  {
+    id: 'sentry',
+    name: 'Sentry',
+    emoji: '🐛',
+    status: 'connected',
+    description: 'Error tracking & performance monitoring',
+    lastSync: 'Real-time',
+    category: 'Infrastructure'
+  },
+  {
+    id: 'inngest',
+    name: 'Inngest',
+    emoji: '⚙️',
+    status: 'connected',
+    description: 'Background jobs & event-driven workflows',
+    lastSync: 'Active',
+    category: 'Infrastructure'
+  },
+  {
+    id: 'posthog',
+    name: 'PostHog',
+    emoji: '📊',
+    status: 'connected',
+    description: 'Product analytics & feature flags',
+    lastSync: 'Real-time',
+    category: 'Infrastructure'
+  },
+  // E-commerce
   {
     id: 'shopify',
     name: 'Shopify',
