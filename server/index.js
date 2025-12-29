@@ -907,7 +907,6 @@ app.get('*', (req, res) => {
 // Sentry error handler - must be before any other error middleware
 Sentry.setupExpressErrorHandler(app);
 
-app.listen(PORT, () => {
 // Start server with WebSocket support
 server.listen(PORT, () => {
   logger.info(`ZeroERP server running on port ${PORT}`);
