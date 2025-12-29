@@ -5,6 +5,7 @@ import dotenv from 'dotenv';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import crypto from 'crypto';
+import * as Sentry from '@sentry/node';
 import { createServer } from 'http';
 
 // External integrations
@@ -15,6 +16,14 @@ import { getInngestMiddleware, events as inngestEvents, healthCheck as inngestHe
 import { initPostHog, events as posthogEvents, trackingMiddleware, healthCheck as posthogHealthCheck, shutdown as posthogShutdown } from './services/posthog.js';
 
 dotenv.config();
+
+// Initialize Sentry for error tracking (must be done before other imports)
+Sentry.init({
+  dsn: process.env.SENTRY_DSN,
+  environment: process.env.NODE_ENV || 'development',
+  enabled: !!process.env.SENTRY_DSN,
+  tracesSampleRate: process.env.NODE_ENV === 'production' ? 0.1 : 1.0,
+});
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -895,6 +904,10 @@ app.get('*', (req, res) => {
   res.sendFile(path.join(distPath, 'index.html'));
 });
 
+// Sentry error handler - must be before any other error middleware
+Sentry.setupExpressErrorHandler(app);
+
+app.listen(PORT, () => {
 // Start server with WebSocket support
 server.listen(PORT, () => {
   logger.info(`ZeroERP server running on port ${PORT}`);
@@ -921,6 +934,9 @@ server.listen(PORT, () => {
     logger.info('API key authentication enabled');
   } else {
     logger.warn('API key authentication disabled (set API_KEY env var to enable)');
+  }
+  if (process.env.SENTRY_DSN) {
+    logger.info('Sentry error tracking enabled');
   }
 });
 
