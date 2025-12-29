@@ -196,6 +196,144 @@ async function getMachineEvents(appName, machineId) {
   return machine.events || [];
 }
 
+/**
+ * Suspend a machine (pause and snapshot state)
+ */
+async function suspendMachine(appName, machineId) {
+  return machinesApi(`/apps/${appName}/machines/${machineId}/suspend`, {
+    method: 'POST',
+  });
+}
+
+/**
+ * Restart a machine (stop then start)
+ */
+async function restartMachine(appName, machineId, options = {}) {
+  return machinesApi(`/apps/${appName}/machines/${machineId}/restart`, {
+    method: 'POST',
+    body: {
+      timeout: options.timeout || '30s',
+      signal: options.signal,
+    },
+  });
+}
+
+/**
+ * Delete a machine permanently
+ */
+async function deleteMachine(appName, machineId, force = false) {
+  const params = force ? '?force=true' : '';
+  return machinesApi(`/apps/${appName}/machines/${machineId}${params}`, {
+    method: 'DELETE',
+  });
+}
+
+/**
+ * Cordon a machine (stop routing traffic to it)
+ */
+async function cordonMachine(appName, machineId) {
+  return machinesApi(`/apps/${appName}/machines/${machineId}/cordon`, {
+    method: 'POST',
+  });
+}
+
+/**
+ * Uncordon a machine (resume routing traffic)
+ */
+async function uncordonMachine(appName, machineId) {
+  return machinesApi(`/apps/${appName}/machines/${machineId}/uncordon`, {
+    method: 'POST',
+  });
+}
+
+/**
+ * Wait for machine to reach a specific state
+ */
+async function waitForMachine(appName, machineId, state = 'started', timeout = 60) {
+  return machinesApi(`/apps/${appName}/machines/${machineId}/wait?state=${state}&timeout=${timeout}s`);
+}
+
+/**
+ * Create a new machine
+ */
+async function createMachine(appName, config) {
+  return machinesApi(`/apps/${appName}/machines`, {
+    method: 'POST',
+    body: config,
+  });
+}
+
+/**
+ * Update machine configuration
+ */
+async function updateMachine(appName, machineId, config) {
+  return machinesApi(`/apps/${appName}/machines/${machineId}`, {
+    method: 'POST',
+    body: config,
+  });
+}
+
+// ============================================================================
+// Machine Leases
+// ============================================================================
+
+/**
+ * Acquire a lease on a machine (exclusive lock)
+ */
+async function acquireLease(appName, machineId, ttl = 30) {
+  return machinesApi(`/apps/${appName}/machines/${machineId}/lease`, {
+    method: 'POST',
+    body: { ttl },
+  });
+}
+
+/**
+ * Get current lease info
+ */
+async function getLease(appName, machineId) {
+  return machinesApi(`/apps/${appName}/machines/${machineId}/lease`);
+}
+
+/**
+ * Release a lease
+ */
+async function releaseLease(appName, machineId, nonce) {
+  return machinesApi(`/apps/${appName}/machines/${machineId}/lease`, {
+    method: 'DELETE',
+    headers: nonce ? { 'fly-machine-lease-nonce': nonce } : {},
+  });
+}
+
+// ============================================================================
+// Machine Metadata
+// ============================================================================
+
+/**
+ * Get machine metadata
+ */
+async function getMetadata(appName, machineId) {
+  return machinesApi(`/apps/${appName}/machines/${machineId}/metadata`);
+}
+
+/**
+ * Set a metadata key
+ */
+async function setMetadataKey(appName, machineId, key, value) {
+  return machinesApi(`/apps/${appName}/machines/${machineId}/metadata/${key}`, {
+    method: 'POST',
+    body: value,
+  });
+}
+
+/**
+ * Delete a metadata key
+ */
+async function deleteMetadataKey(appName, machineId, key) {
+  return machinesApi(`/apps/${appName}/machines/${machineId}/metadata/${key}`, {
+    method: 'DELETE',
+  });
+}
+
 // ============================================================================
 // Secrets Management
 // ============================================================================
@@ -315,6 +453,99 @@ async function getDeploymentStatus(appName) {
 }
 
 // ============================================================================
+// Volumes Management
+// ============================================================================
+
+/**
+ * List volumes for an app
+ */
+async function listVolumes(appName) {
+  return machinesApi(`/apps/${appName}/volumes`);
+}
+
+/**
+ * Get volume details
+ */
+async function getVolume(appName, volumeId) {
+  return machinesApi(`/apps/${appName}/volumes/${volumeId}`);
+}
+
+/**
+ * Create a new volume
+ */
+async function createVolume(appName, options) {
+  return machinesApi(`/apps/${appName}/volumes`, {
+    method: 'POST',
+    body: {
+      name: options.name,
+      region: options.region,
+      size_gb: options.sizeGb || 1,
+      snapshot_id: options.snapshotId,
+      snapshot_retention: options.snapshotRetention,
+      encrypted: options.encrypted !== false,
+    },
+  });
+}
+
+/**
+ * Extend (resize) a volume - can only increase size
+ */
+async function extendVolume(appName, volumeId, sizeGb) {
+  return machinesApi(`/apps/${appName}/volumes/${volumeId}/extend`, {
+    method: 'PUT',
+    body: { size_gb: sizeGb },
+  });
+}
+
+/**
+ * Delete a volume permanently
+ */
+async function deleteVolume(appName, volumeId) {
+  return machinesApi(`/apps/${appName}/volumes/${volumeId}`, {
+    method: 'DELETE',
+  });
+}
+
+/**
+ * List volume snapshots
+ */
+async function listSnapshots(appName, volumeId) {
+  return machinesApi(`/apps/${appName}/volumes/${volumeId}/snapshots`);
+}
+
+/**
+ * Create a volume snapshot
+ */
+async function createSnapshot(appName, volumeId) {
+  return machinesApi(`/apps/${appName}/volumes/${volumeId}/snapshots`, {
+    method: 'POST',
+  });
+}
+
+// ============================================================================
+// Regions
+// ============================================================================
+
+/**
+ * List available regions
+ */
+async function listRegions() {
+  const query = `
+    query {
+      platform {
+        regions {
+          code
+          name
+          gatewayAvailable
+        }
+      }
+    }
+  `;
+  const data = await graphql(query);
+  return data.platform.regions;
+}
+
+// ============================================================================
 // Health & Monitoring
 // ============================================================================
 
@@ -377,6 +608,69 @@ async function getAppStatus(appName) {
     healthChecks,
     hostIssues,
   };
+}
+
+// ============================================================================
+// Bulk Operations
+// ============================================================================
+
+/**
+ * Start all machines for an app
+ */
+async function startAllMachines(appName) {
+  const machines = await listMachines(appName);
+  const results = [];
+  for (const machine of machines) {
+    if (machine.state === 'stopped' || machine.state === 'suspended') {
+      try {
+        await startMachine(appName, machine.id);
+        results.push({ id: machine.id, name: machine.name, status: 'starting' });
+      } catch (error) {
+        results.push({ id: machine.id, name: machine.name, status: 'error', error: error.message });
+      }
+    } else {
+      results.push({ id: machine.id, name: machine.name, status: 'already running' });
+    }
+  }
+  return results;
+}
+
+/**
+ * Stop all machines for an app
+ */
+async function stopAllMachines(appName) {
+  const machines = await listMachines(appName);
+  const results = [];
+  for (const machine of machines) {
+    if (machine.state === 'started') {
+      try {
+        await stopMachine(appName, machine.id);
+        results.push({ id: machine.id, name: machine.name, status: 'stopping' });
+      } catch (error) {
+        results.push({ id: machine.id, name: machine.name, status: 'error', error: error.message });
+      }
+    } else {
+      results.push({ id: machine.id, name: machine.name, status: 'already stopped' });
+    }
+  }
+  return results;
+}
+
+/**
+ * Restart all machines for an app
+ */
+async function restartAllMachines(appName) {
+  const machines = await listMachines(appName);
+  const results = [];
+  for (const machine of machines) {
+    try {
+      await restartMachine(appName, machine.id);
+      results.push({ id: machine.id, name: machine.name, status: 'restarting' });
+    } catch (error) {
+      results.push({ id: machine.id, name: machine.name, status: 'error', error: error.message });
+    }
+  }
+  return results;
 }
 
 // ============================================================================
@@ -462,6 +756,162 @@ async function cli() {
       console.log(`Machine ${machineId} stopping...`);
     },
 
+    'restart': async () => {
+      const machineId = args[1];
+      if (!machineId) {
+        console.error('Usage: fly-api restart <machineId>');
+        process.exit(1);
+      }
+      await restartMachine(appName, machineId);
+      console.log(`Machine ${machineId} restarting...`);
+    },
+
+    'suspend': async () => {
+      const machineId = args[1];
+      if (!machineId) {
+        console.error('Usage: fly-api suspend <machineId>');
+        process.exit(1);
+      }
+      await suspendMachine(appName, machineId);
+      console.log(`Machine ${machineId} suspending...`);
+    },
+
+    'cordon': async () => {
+      const machineId = args[1];
+      if (!machineId) {
+        console.error('Usage: fly-api cordon <machineId>');
+        process.exit(1);
+      }
+      await cordonMachine(appName, machineId);
+      console.log(`Machine ${machineId} cordoned (traffic routing stopped)`);
+    },
+
+    'uncordon': async () => {
+      const machineId = args[1];
+      if (!machineId) {
+        console.error('Usage: fly-api uncordon <machineId>');
+        process.exit(1);
+      }
+      await uncordonMachine(appName, machineId);
+      console.log(`Machine ${machineId} uncordoned (traffic routing resumed)`);
+    },
+
+    'start-all': async () => {
+      console.log('Starting all machines...');
+      const results = await startAllMachines(appName);
+      results.forEach(r => console.log(`  ${r.name}: ${r.status}`));
+    },
+
+    'stop-all': async () => {
+      console.log('Stopping all machines...');
+      const results = await stopAllMachines(appName);
+      results.forEach(r => console.log(`  ${r.name}: ${r.status}`));
+    },
+
+    'restart-all': async () => {
+      console.log('Restarting all machines...');
+      const results = await restartAllMachines(appName);
+      results.forEach(r => console.log(`  ${r.name}: ${r.status}`));
+    },
+
+    'volumes': async () => {
+      const volumes = await listVolumes(appName);
+      if (volumes.length === 0) {
+        console.log('No volumes found');
+      } else {
+        console.log('Volumes:');
+        volumes.forEach(v => {
+          console.log(`  ${v.id} - ${v.name}`);
+          console.log(`    Region: ${v.region}, Size: ${v.size_gb}GB, State: ${v.state}`);
+          if (v.attached_machine_id) {
+            console.log(`    Attached to: ${v.attached_machine_id}`);
+          }
+        });
+      }
+    },
+
+    'volume': async () => {
+      const volumeId = args[1];
+      if (!volumeId) {
+        console.error('Usage: fly-api volume <volumeId>');
+        process.exit(1);
+      }
+      const volume = await getVolume(appName, volumeId);
+      console.log(JSON.stringify(volume, null, 2));
+    },
+
+    'volumes:create': async () => {
+      const name = args[1];
+      const region = args[2];
+      const size = args[3] || '1';
+      if (!name || !region) {
+        console.error('Usage: fly-api volumes:create <name> <region> [sizeGb]');
+        process.exit(1);
+      }
+      const volume = await createVolume(appName, { name, region, sizeGb: parseInt(size) });
+      console.log(`Volume created: ${volume.id}`);
+      console.log(JSON.stringify(volume, null, 2));
+    },
+
+    'volumes:extend': async () => {
+      const volumeId = args[1];
+      const size = args[2];
+      if (!volumeId || !size) {
+        console.error('Usage: fly-api volumes:extend <volumeId> <newSizeGb>');
+        process.exit(1);
+      }
+      const result = await extendVolume(appName, volumeId, parseInt(size));
+      console.log(`Volume extended to ${size}GB`);
+      if (result.needs_restart) {
+        console.log('Note: Machine restart required to use new space');
+      }
+    },
+
+    'volumes:delete': async () => {
+      const volumeId = args[1];
+      if (!volumeId) {
+        console.error('Usage: fly-api volumes:delete <volumeId>');
+        process.exit(1);
+      }
+      await deleteVolume(appName, volumeId);
+      console.log(`Volume ${volumeId} deleted`);
+    },
+
+    'snapshots': async () => {
+      const volumeId = args[1];
+      if (!volumeId) {
+        console.error('Usage: fly-api snapshots <volumeId>');
+        process.exit(1);
+      }
+      const snapshots = await listSnapshots(appName, volumeId);
+      if (snapshots.length === 0) {
+        console.log('No snapshots found');
+      } else {
+        console.log('Snapshots:');
+        snapshots.forEach(s => {
+          console.log(`  ${s.id} - ${s.created_at} (${s.size} bytes)`);
+        });
+      }
+    },
+
+    'snapshots:create': async () => {
+      const volumeId = args[1];
+      if (!volumeId) {
+        console.error('Usage: fly-api snapshots:create <volumeId>');
+        process.exit(1);
+      }
+      await createSnapshot(appName, volumeId);
+      console.log(`Snapshot creation initiated for volume ${volumeId}`);
+    },
+
+    'regions': async () => {
+      const regions = await listRegions();
+      console.log('Available regions:');
+      regions
+        .filter(r => r.gatewayAvailable)
+        .forEach(r => console.log(`  ${r.code} - ${r.name}`));
+    },
+
     'secrets': async () => {
       const secrets = await listSecrets(appName);
       console.log('Configured secrets:');
@@ -545,19 +995,49 @@ Environment:
   FLY_API_TOKEN or FLY_API  - Fly.io API token (required)
   FLY_APP                    - App name (default: zeroerp)
 
-Commands:
+App Commands:
   status              Full app status overview
   app                 Get app details
+  releases            List recent releases
+  health              Check health status
+  regions             List available regions
+
+Machine Commands:
   machines            List all machines
   machine <id>        Get machine details
   start <id>          Start a machine
   stop <id>           Stop a machine
+  restart <id>        Restart a machine
+  suspend <id>        Suspend a machine (snapshot state)
+  cordon <id>         Stop routing traffic to machine
+  uncordon <id>       Resume routing traffic to machine
+
+Bulk Machine Commands:
+  start-all           Start all machines
+  stop-all            Stop all machines
+  restart-all         Restart all machines
+
+Volume Commands:
+  volumes             List all volumes
+  volume <id>         Get volume details
+  volumes:create <name> <region> [size]
+                      Create a new volume
+  volumes:extend <id> <size>
+                      Extend volume to new size (GB)
+  volumes:delete <id> Delete a volume
+
+Snapshot Commands:
+  snapshots <volId>   List snapshots for a volume
+  snapshots:create <volId>
+                      Create a snapshot
+
+Secrets Commands:
   secrets             List configured secrets
   secrets:set K=V     Set secrets (KEY=VALUE pairs)
   secrets:unset K     Remove secrets
-  releases            List recent releases
+
+Other Commands:
   events              Show recent machine events
-  health              Check health status
   help                Show this help
 `);
     },
@@ -583,22 +1063,68 @@ if (process.argv[1].endsWith('fly-api.js')) {
 
 // Export for programmatic use
 export {
+  // Core API
   graphql,
   machinesApi,
+
+  // App management
   getApp,
   listApps,
+  getAppStatus,
+
+  // Machine management
   listMachines,
   getMachine,
+  createMachine,
+  updateMachine,
+  deleteMachine,
   startMachine,
   stopMachine,
+  restartMachine,
+  suspendMachine,
+  cordonMachine,
+  uncordonMachine,
+  waitForMachine,
   getMachineEvents,
+
+  // Bulk operations
+  startAllMachines,
+  stopAllMachines,
+  restartAllMachines,
+
+  // Machine leases
+  acquireLease,
+  getLease,
+  releaseLease,
+
+  // Machine metadata
+  getMetadata,
+  setMetadataKey,
+  deleteMetadataKey,
+
+  // Secrets
   listSecrets,
   setSecrets,
   unsetSecrets,
+
+  // Releases
   listReleases,
   getDeploymentStatus,
+
+  // Volumes
+  listVolumes,
+  getVolume,
+  createVolume,
+  extendVolume,
+  deleteVolume,
+  listSnapshots,
+  createSnapshot,
+
+  // Regions
+  listRegions,
+
+  // Health & monitoring
   getHealthChecks,
   getHostIssues,
-  getAppStatus,
   getRecentEvents,
 };
