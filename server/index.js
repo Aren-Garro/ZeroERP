@@ -5,8 +5,19 @@ import dotenv from 'dotenv';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import crypto from 'crypto';
+import * as Sentry from '@sentry/node';
 
 dotenv.config();
+
+// Initialize Sentry for error tracking (must be done early)
+if (process.env.SENTRY_DSN) {
+  Sentry.init({
+    dsn: process.env.SENTRY_DSN,
+    environment: process.env.NODE_ENV || 'development',
+    // Performance monitoring sample rate
+    tracesSampleRate: process.env.NODE_ENV === 'production' ? 0.1 : 1.0,
+  });
+}
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -154,6 +165,11 @@ const validateEnv = () => {
   // Check API key for authentication in production
   if (IS_PRODUCTION && !process.env.API_KEY) {
     warnings.push('API_KEY not set. API authentication is disabled. Consider setting API_KEY for production.');
+  }
+
+  // Check Sentry DSN
+  if (!process.env.SENTRY_DSN) {
+    warnings.push('SENTRY_DSN not set. Error tracking is disabled.');
   }
 
   // Log warnings
@@ -818,6 +834,11 @@ app.get('*', (req, res) => {
   }
   res.sendFile(path.join(distPath, 'index.html'));
 });
+
+// Sentry error handler (must be after all routes)
+if (process.env.SENTRY_DSN) {
+  Sentry.setupExpressErrorHandler(app);
+}
 
 app.listen(PORT, () => {
   logger.info(`ZeroERP server running on port ${PORT}`);

@@ -19,6 +19,8 @@
     "fly:machines": "node scripts/fly-api.js machines"
   },
   "dependencies": {
+    "@sentry/node": "^8.0.0",
+    "@sentry/react": "^8.0.0",
     "@stripe/react-stripe-js": "^2.4.0",
     "@stripe/stripe-js": "^2.2.0",
     "cors": "^2.8.5",
